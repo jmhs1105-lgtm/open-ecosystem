@@ -1,0 +1,50 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Secrets
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.android/
+.gradle/
+*.apk
+*.aab
+*.keystore
+
+# IDE
+.vscode/settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# Backups
+backups/*
+!backups/.gitkeep
+
+# Expo
+.expo/
+
+# Sub-projects (own repos)
+projects/
+
+# Staging
+skills-download-staging/
+kali-import-staging/
+
+# Memory
+memory/

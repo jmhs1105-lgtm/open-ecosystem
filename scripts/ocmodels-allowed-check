@@ -1,0 +1,138 @@
+#!/bin/bash
+# ocmodels-allowed-check - Valida documentación de modelos permitidos
+# Uso: ~/harnesses/scripts/ocmodels-allowed-check
+
+set -e
+
+PASS=0
+FAIL=0
+WARN=0
+
+pass() { echo "  ✅ $1"; PASS=$((PASS+1)); }
+fail() { echo "  ❌ $1"; FAIL=$((FAIL+1)); }
+warn() { echo "  ⚠️  $1"; WARN=$((WARN+1)); }
+
+echo "=== OpenCode Models Allowed Check ==="
+echo ""
+
+# 1. MODELS_ALLOWED.md existe
+echo "1. Documentos centrales"
+[ -f ~/harnesses/opencode/MODELS_ALLOWED.md ] && pass "MODELS_ALLOWED.md existe" || fail "MODELS_ALLOWED.md no existe"
+[ -f ~/harnesses/opencode/MODEL_ROUTING.md ] && pass "MODEL_ROUTING.md existe" || fail "MODEL_ROUTING.md no existe"
+[ -f ~/harnesses/opencode/TOKEN_SAVING_POLICY.md ] && pass "TOKEN_SAVING_POLICY.md existe" || fail "TOKEN_SAVING_POLICY.md no existe"
+[ -f ~/harnesses/opencode/MODEL_ROTATION_POLICY.md ] && pass "MODEL_ROTATION_POLICY.md existe" || fail "MODEL_ROTATION_POLICY.md no existe"
+echo ""
+
+# 2. Provider notes por agente
+echo "2. Provider notes por agente"
+AGENTS=(orchestrator-ai-master android-architect react-native-expo backend-api insforge telegram-bot whatsapp-bot mcp-operations cloud-runtime ai-provider security-recovery software-architect research-agent)
+for agent in "${AGENTS[@]}"; do
+  if [ -f ~/harnesses/agents/$agent/memory/provider-notes.md ]; then
+    pass "$agent tiene provider-notes.md"
+  else
+    fail "$agent NO tiene provider-notes.md"
+  fi
+done
+echo ""
+
+# 3. Solo modelos de la lista permitida
+echo "3. Validación de modelos permitidos"
+ALLOWED_MODELS=(
+  "opencode/deepseek-v4-flash-free"
+  "opencode/big-pickle"
+  "opencode-go/glm-5.1"
+  "opencode-go/glm-5"
+  "opencode-go/kimi-k2.7-code"
+  "opencode-go/kimi-k2.6"
+  "opencode-go/deepseek-v4-pro"
+  "opencode-go/deepseek-v4-flash"
+  "opencode-go/mimo-v2.5"
+  "opencode-go/mimo-v2.5-pro"
+  "opencode-go/minimax-m3"
+  "opencode-go/minimax-m2.7"
+  "opencode-go/minimax-m2.5"
+  "opencode-go/qwen3.7-max"
+  "opencode-go/qwen3.7-plus"
+  "opencode-go/qwen3.6-plus"
+)
+
+# Extraer todos los IDs de modelo de los provider-notes
+EXTERNAL_FOUND=0
+for agent in "${AGENTS[@]}"; do
+  FILE=~/harnesses/agents/$agent/memory/provider-notes.md
+  if [ -f "$FILE" ]; then
+    MODELS_IN_FILE=$(grep -oE 'opencode(-go)?/[a-z0-9._-]+' "$FILE" 2>/dev/null | sort -u)
+    for model in $MODELS_IN_FILE; do
+      FOUND=0
+      for allowed in "${ALLOWED_MODELS[@]}"; do
+        if [ "$model" = "$allowed" ]; then
+          FOUND=1
+          break
+        fi
+      done
+      if [ $FOUND -eq 0 ]; then
+        fail "Modelo externo en $agent: $model"
+        EXTERNAL_FOUND=$((EXTERNAL_FOUND+1))
+      fi
+    done
+  fi
+done
+
+if [ $EXTERNAL_FOUND -eq 0 ]; then
+  pass "No hay modelos externos en provider-notes"
+fi
+echo ""
+
+# 4. No se tocó opencode.json
+echo "4. Integridad de opencode.json"
+if [ -f ~/.config/opencode/opencode.json ]; then
+  if python3 -c "import json; json.load(open('$HOME/.config/opencode/opencode.json'))" 2>/dev/null; then
+    pass "opencode.json es JSON válido"
+  else
+    fail "opencode.json tiene JSON inválido"
+  fi
+else
+  fail "opencode.json no existe"
+fi
+echo ""
+
+# 5. No hay secretos visibles
+echo "5. Seguridad - sin secretos"
+SECRETS_FOUND=0
+for doc in MODELS_ALLOWED.md MODEL_ROUTING.md TOKEN_SAVING_POLICY.md MODEL_ROTATION_POLICY.md; do
+  FILE=~/harnesses/opencode/$doc
+  if [ -f "$FILE" ]; then
+    if grep -qiE '(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|AKIA[A-Z0-9]{16}|password\s*[:=]\s*["\x27][^"\x27]+)' "$FILE" 2>/dev/null; then
+      fail "Posible secreto en $doc"
+      SECRETS_FOUND=$((SECRETS_FOUND+1))
+    fi
+  fi
+done
+for agent in "${AGENTS[@]}"; do
+  FILE=~/harnesses/agents/$agent/memory/provider-notes.md
+  if [ -f "$FILE" ]; then
+    if grep -qiE '(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|AKIA[A-Z0-9]{16}|password\s*[:=]\s*["\x27][^"\x27]+)' "$FILE" 2>/dev/null; then
+      fail "Posible secreto en $agent/provider-notes.md"
+      SECRETS_FOUND=$((SECRETS_FOUND+1))
+    fi
+  fi
+done
+if [ $SECRETS_FOUND -eq 0 ]; then
+  pass "No se encontraron secretos en documentos"
+fi
+echo ""
+
+# Resumen
+echo "=== Resumen ==="
+echo "  ✅ Pass: $PASS"
+echo "  ❌ Fail: $FAIL"
+echo "  ⚠️  Warn: $WARN"
+echo ""
+
+if [ $FAIL -eq 0 ]; then
+  echo "✅ Todos los modelos permitidos validados correctamente."
+  exit 0
+else
+  echo "❌ Hay $FAIL errores. Revisar arriba."
+  exit 1
+fi

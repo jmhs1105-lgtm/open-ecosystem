@@ -1,0 +1,66 @@
+#!/usr/bin/env zsh
+# ocsave — Save ecosystem snapshot
+# Creates a timestamped snapshot of important ecosystem files
+
+HARNESSES="$HOME/harnesses"
+BACKUP_DIR="$HARNESSES/backups"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+SNAPSHOT_DIR="$BACKUP_DIR/snapshot-$TIMESTAMP"
+
+echo "=== OpenCode Ecosystem Snapshot ==="
+echo "Timestamp: $TIMESTAMP"
+echo ""
+
+# Create snapshot directory
+mkdir -p "$SNAPSHOT_DIR"
+mkdir -p "$SNAPSHOT_DIR/config_opencode"
+mkdir -p "$SNAPSHOT_DIR/harnesses_opencode"
+mkdir -p "$SNAPSHOT_DIR/harnesses_agents"
+mkdir -p "$SNAPSHOT_DIR/harnesses_skills"
+mkdir -p "$SNAPSHOT_DIR/harnesses_scripts"
+mkdir -p "$SNAPSHOT_DIR/harnesses_mcp"
+mkdir -p "$SNAPSHOT_DIR/harnesses_docs"
+
+echo "Saving config..."
+if [ -f "$HOME/.config/opencode/opencode.json" ]; then
+  cp "$HOME/.config/opencode/opencode.json" "$SNAPSHOT_DIR/config_opencode/"
+  echo "  ✅ opencode.json"
+fi
+
+echo "Saving harnesses..."
+if [ -d "$HARNESSES/opencode" ]; then
+  cp -r "$HARNESSES/opencode/" "$SNAPSHOT_DIR/harnesses_opencode/" 2>/dev/null
+  echo "  ✅ opencode/ docs"
+fi
+
+if [ -d "$HARNESSES/agents" ]; then
+  cp -r "$HARNESSES/agents/" "$SNAPSHOT_DIR/harnesses_agents/" 2>/dev/null
+  echo "  ✅ agents/"
+fi
+
+if [ -d "$HARNESSES/skills" ]; then
+  cp -r "$HARNESSES/skills/" "$SNAPSHOT_DIR/harnesses_skills/" 2>/dev/null
+  echo "  ✅ skills/"
+fi
+
+if [ -d "$HARNESSES/scripts" ]; then
+  cp -r "$HARNESSES/scripts/" "$SNAPSHOT_DIR/harnesses_scripts/" 2>/dev/null
+  echo "  ✅ scripts/"
+fi
+
+if [ -d "$HARNESSES/mcp" ]; then
+  cp -r "$HARNESSES/mcp/" "$SNAPSHOT_DIR/harnesses_mcp/" 2>/dev/null
+  echo "  ✅ mcp/"
+fi
+
+if [ -d "$HARNESSES/docs" ]; then
+  cp -r "$HARNESSES/docs/" "$SNAPSHOT_DIR/harnesses_docs/" 2>/dev/null
+  echo "  ✅ docs/"
+fi
+
+# Size summary
+SIZE=$(du -sh "$SNAPSHOT_DIR" 2>/dev/null | cut -f1)
+echo ""
+echo "Snapshot saved: $SNAPSHOT_DIR"
+echo "Total size: $SIZE"
+echo "Done."

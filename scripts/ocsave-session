@@ -1,0 +1,61 @@
+#!/bin/bash
+# ocsave-session — Guarda estado de sesión en InsForge cloud
+# Uso: ocsave-session [--task "descripción"] [--progress '{"key":"val"}']
+
+INFORGE_DIR="$HOME/harnesses/projects/js-agents/insforge"
+SESSION_FILE="$HOME/harnesses/opencode/SESSION_MEMORY.md"
+
+TASK=""
+PROGRESS="{}"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --task) TASK="$2"; shift 2 ;;
+    --progress) PROGRESS="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+SESSION_ID="session-$(date +%Y%m%d-%H%M%S)"
+
+echo "=== Guardando sesión en InsForge ==="
+
+LAST_ACTION=$(grep -A1 "^\\*\\*Última acción\\*\\*" "$SESSION_FILE" 2>/dev/null | tail -1 | sed 's/^\*\+ //; s/\*\+$//')
+CURRENT_TASK="${TASK:-$LAST_ACTION}"
+
+LAST_SNAPSHOT=$(ls -dt "$HOME/harnesses/backups"/snapshot-* 2>/dev/null | head -1)
+SNAPSHOT_NAME=$(basename "$LAST_SNAPSHOT" 2>/dev/null || echo "none")
+
+# Escapar para SQL
+escape_sql() {
+  echo "$1" | sed "s/'/''/g"
+}
+
+TASK_ESC=$(escape_sql "$CURRENT_TASK")
+PROGRESS_ESC=$(escape_sql "$PROGRESS")
+CONTEXT_ESC=$(escape_sql "Proyecto: js-agents (backend-api + insforge)
+Último snapshot: $SNAPSHOT_NAME")
+
+SQL_INSERT="INSERT INTO agent_state (agent_name, session_id, status, current_task, progress, context, last_action) VALUES ('orchestrator', '$SESSION_ID', 'active', '$TASK_ESC', '$PROGRESS_ESC'::jsonb, '$CONTEXT_ESC', 'Sesión guardada en InsForge');"
+
+RESULT=$(cd "$INFORGE_DIR" && insforge db query "$SQL_INSERT" 2>&1)
+if [ $? -eq 0 ]; then
+  echo "  ✅ Estado guardado en agent_state (session: $SESSION_ID)"
+else
+  echo "  ❌ Error guardando en InsForge: $RESULT"
+fi
+
+MEM_VALUE="{\"session_id\":\"$SESSION_ID\",\"project\":\"js-agents\",\"last_action\":\"$CURRENT_TASK\",\"snapshot\":\"$SNAPSHOT_NAME\"}"
+MEM_ESC=$(escape_sql "$MEM_VALUE")
+
+SQL_MEM="INSERT INTO memory_entries (agent_id, key, value) VALUES ('orchestrator', 'session_context', '$MEM_ESC'::jsonb);"
+
+RESULT2=$(cd "$INFORGE_DIR" && insforge db query "$SQL_MEM" 2>&1)
+if [ $? -eq 0 ]; then
+  echo "  ✅ Contexto guardado en memory_entries"
+else
+  echo "  ❌ Error guardando memoria: $RESULT2"
+fi
+
+echo ""
+echo "=== Sesión guardada en la nube ==="

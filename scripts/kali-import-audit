@@ -1,0 +1,242 @@
+#!/usr/bin/env zsh
+# kali-import-audit — Scan staging directory for security and integrity issues
+# Usage: kali-import-audit [path]
+#   If no path given, scans ~/harnesses/kali-import-staging/
+#   Reports only — NEVER deletes files
+
+STAGING="${1:-$HOME/harnesses/kali-import-staging}"
+WARN=0
+BLOCK=0
+PASS=0
+
+if [ ! -d "$STAGING" ]; then
+  echo "❌ Staging directory not found: $STAGING"
+  exit 1
+fi
+
+echo "=== Kali Import Audit ==="
+echo "Scanning: $STAGING"
+echo ""
+
+# Count total files
+TOTAL_FILES=$(find "$STAGING" -type f 2>/dev/null | wc -l | tr -d ' ')
+echo "Files found: $TOTAL_FILES"
+echo ""
+
+# 1. Detect .env files
+echo "--- 1. Secrets: .env files ---"
+ENV_FILES=$(find "$STAGING" -name '.env' -o -name '.env.*' 2>/dev/null)
+if [ -n "$ENV_FILES" ]; then
+  while IFS= read -r f; do
+    echo "  ⚠️  BLOCKED: $f"
+    BLOCK=$((BLOCK+1))
+  done <<< "$ENV_FILES"
+else
+  echo "  ✅ No .env files found"
+  PASS=$((PASS+1))
+fi
+
+# 2. Detect potential API keys and tokens
+echo ""
+echo "--- 2. Secrets: potential API keys/tokens ---"
+SECRET_PATTERNS=(
+  '(api[_-]?key|apikey).{0,5}[:=].{0,5}[A-Za-z0-9_\-]{16,}'
+  '(token|secret|password).{0,5}[:=].{0,5}[A-Za-z0-9_\-]{8,}'
+  'sk-[a-zA-Z0-9]{20,}'           # OpenAI-style
+  'ghp_[a-zA-Z0-9]{36}'           # GitHub PAT
+  'gho_[a-zA-Z0-9]{36}'           # GitHub OAuth
+  'xox[bpras]-[0-9A-Za-z\-]{10,}' # Slack tokens
+  'AKIA[0-9A-Z]{16}'              # AWS access key
+)
+FOUND_SECRETS=0
+for pattern in "${SECRET_PATTERNS[@]}"; do
+  RESULTS=$(find "$STAGING" -type f \( -name '*.md' -o -name '*.txt' -o -name '*.json' -o -name '*.js' -o -name '*.ts' -o -name '*.py' -o -name '*.sh' -o -name '*.zsh' -o -name '*.yaml' -o -name '*.yml' -o -name '*.toml' -o -name '*.cfg' -o -name '*.conf' -o -name '*.properties' -o -name '*.sql' -o -name '*.kts' -o -name '*.java' -o -name '*.kt' -o -name '*.xml' \) 2>/dev/null -exec grep -rnl -E --regexp="$pattern" {} + 2>/dev/null || true)
+  if [ -n "$RESULTS" ]; then
+    while IFS= read -r f; do
+      if [ -n "$f" ]; then
+        echo "  ⚠️  SUSPICIOUS: $f (pattern: $pattern)"
+        FOUND_SECRETS=$((FOUND_SECRETS+1))
+      fi
+    done <<< "$RESULTS"
+  fi
+done
+if [ "$FOUND_SECRETS" -eq 0 ]; then
+  echo "  ✅ No secrets detected"
+  PASS=$((PASS+1))
+else
+  BLOCK=$((BLOCK+FOUND_SECRETS))
+fi
+
+# 3. Detect node_modules
+echo ""
+echo "--- 3. Forbidden: node_modules ---"
+NM_COUNT=$(find "$STAGING" -type d -name 'node_modules' 2>/dev/null | wc -l | tr -d ' ')
+if [ "$NM_COUNT" -gt 0 ]; then
+  echo "  ⚠️  BLOCKED: $NM_COUNT node_modules/ directories found"
+  find "$STAGING" -type d -name 'node_modules' 2>/dev/null | while IFS= read -r d; do
+    echo "      - $d"
+  done
+  BLOCK=$((BLOCK+NM_COUNT))
+else
+  echo "  ✅ No node_modules found"
+  PASS=$((PASS+1))
+fi
+
+# 4. Detect opencode.json/c
+echo ""
+echo "--- 4. Forbidden: opencode.json/opencode.jsonc ---"
+OC_FILES=$(find "$STAGING" -name 'opencode.json' -o -name 'opencode.jsonc' 2>/dev/null)
+if [ -n "$OC_FILES" ]; then
+  while IFS= read -r f; do
+    echo "  ⚠️  BLOCKED: $f (config files must not be imported)"
+    BLOCK=$((BLOCK+1))
+  done <<< "$OC_FILES"
+else
+  echo "  ✅ No opencode.json/opencode.jsonc found"
+  PASS=$((PASS+1))
+fi
+
+# 5. Detect providers key in JSON files
+echo ""
+echo "--- 5. Forbidden: 'providers' key in JSON ---"
+PROV_FILES=$(find "$STAGING" -type f -name '*.json' 2>/dev/null -exec grep -rl '"providers"' {} + 2>/dev/null || true)
+if [ -n "$PROV_FILES" ]; then
+  while IFS= read -r f; do
+    echo "  ⚠️  BLOCKED: $f (contains incompatible 'providers' key)"
+    BLOCK=$((BLOCK+1))
+  done <<< "$PROV_FILES"
+else
+  echo "  ✅ No 'providers' key found"
+  PASS=$((PASS+1))
+fi
+
+# 6. Detect cache/build directories
+echo ""
+echo "--- 6. Forbidden: caches and build artifacts ---"
+CACHE_DIRS=(
+  '.gradle' 'build' '.expo' 'dist' '.cache'
+  '__pycache__' '.mypy_cache' '.pytest_cache'
+  '.next' '.turbo' 'coverage'
+)
+CACHE_COUNT=0
+for d in "${CACHE_DIRS[@]}"; do
+  FOUND=$(find "$STAGING" -type d -name "$d" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$FOUND" -gt 0 ]; then
+    CACHE_COUNT=$((CACHE_COUNT+FOUND))
+  fi
+done
+if [ "$CACHE_COUNT" -gt 0 ]; then
+  echo "  ⚠️  BLOCKED: $CACHE_COUNT cache/build directories found"
+  for d in "${CACHE_DIRS[@]}"; do
+    find "$STAGING" -type d -name "$d" 2>/dev/null | while IFS= read -r dir; do
+      echo "      - $dir"
+    done
+  done
+  BLOCK=$((BLOCK+CACHE_COUNT))
+else
+  echo "  ✅ No cache/build directories found"
+  PASS=$((PASS+1))
+fi
+
+# 7. Detect .git directories
+echo ""
+echo "--- 7. Detected: .git directories ---"
+GIT_COUNT=$(find "$STAGING" -type d -name '.git' 2>/dev/null | wc -l | tr -d ' ')
+if [ "$GIT_COUNT" -gt 0 ]; then
+  echo "  ⚠️  $GIT_COUNT .git/ directories found (strip before import)"
+  find "$STAGING" -type d -name '.git' 2>/dev/null | while IFS= read -r d; do
+    echo "      - $d"
+  done
+  WARN=$((WARN+GIT_COUNT))
+else
+  echo "  ✅ No .git directories found"
+  PASS=$((PASS+1))
+fi
+
+# 8. Check for large files
+echo ""
+echo "--- 8. Large files ---"
+LARGE_FILES=$(find "$STAGING" -type f -size +1M 2>/dev/null)
+if [ -n "$LARGE_FILES" ]; then
+  echo "  ⚠️  Files > 1MB:"
+  while IFS= read -r f; do
+    SIZE=$(du -h "$f" 2>/dev/null | cut -f1)
+    echo "      $SIZE  $f"
+    # >10MB is blocked
+    BYTES=$(stat -f%z "$f" 2>/dev/null)
+    if [ "$BYTES" -gt 10485760 ]; then
+      echo "      → BLOCKED: exceeds 10MB"
+      BLOCK=$((BLOCK+1))
+    fi
+  done <<< "$LARGE_FILES"
+else
+  echo "  ✅ No files > 1MB"
+  PASS=$((PASS+1))
+fi
+
+# 9. Validate JSON files
+echo ""
+echo "--- 9. JSON validation ---"
+JSON_FILES=$(find "$STAGING" -name '*.json' 2>/dev/null)
+INVALID_JSON=0
+if [ -n "$JSON_FILES" ]; then
+  while IFS= read -r f; do
+    if ! python3 -m json.tool "$f" > /dev/null 2>&1; then
+      echo "  ❌ INVALID JSON: $f"
+      INVALID_JSON=$((INVALID_JSON+1))
+    fi
+  done <<< "$JSON_FILES"
+  if [ "$INVALID_JSON" -eq 0 ]; then
+    echo "  ✅ All JSON files valid"
+    PASS=$((PASS+1))
+  else
+    BLOCK=$((BLOCK+INVALID_JSON))
+  fi
+else
+  echo "  ℹ️  No JSON files to validate"
+  PASS=$((PASS+1))
+fi
+
+# 10. Validate shell scripts syntax
+echo ""
+echo "--- 10. Shell script validation ---"
+SH_FILES=$(find "$STAGING" -name '*.sh' -o -name '*.zsh' -o -name '*.bash' 2>/dev/null)
+INVALID_SH=0
+if [ -n "$SH_FILES" ]; then
+  while IFS= read -r f; do
+    if command -v zsh > /dev/null 2>&1; then
+      if ! zsh -n "$f" 2>/dev/null; then
+        echo "  ❌ SYNTAX ERROR: $f"
+        INVALID_SH=$((INVALID_SH+1))
+      fi
+    fi
+  done <<< "$SH_FILES"
+  if [ "$INVALID_SH" -eq 0 ]; then
+    echo "  ✅ All shell scripts valid"
+    PASS=$((PASS+1))
+  else
+    BLOCK=$((BLOCK+INVALID_SH))
+  fi
+else
+  echo "  ℹ️  No shell scripts to validate"
+  PASS=$((PASS+1))
+fi
+
+# Summary
+echo ""
+echo "=== Audit Summary ==="
+echo "  ✅ Pass:  $PASS"
+echo "  ⚠️  Warnings: $WARN (review suggested but not blocked)"
+echo "  ❌ Blocked: $BLOCK (must be resolved before safe-copy)"
+echo "  Files:  $TOTAL_FILES"
+
+if [ "$BLOCK" -gt 0 ]; then
+  echo ""
+  echo "⚠️  $BLOCK issue(s) must be resolved before importing."
+  echo "   Remove or fix blocked files in staging, then re-run audit."
+  exit 1
+else
+  echo ""
+  echo "✅ Staging directory passed audit."
+  exit 0
+fi

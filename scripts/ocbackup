@@ -1,0 +1,95 @@
+#!/usr/bin/env zsh
+# ocbackup — Full ecosystem backup
+# Creates a complete backup of config, harnesses, agents, skills, and scripts
+
+HARNESSES="$HOME/harnesses"
+BACKUP_DIR="$HARNESSES/backups"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_PATH="$BACKUP_DIR/ecosystem-backup-$TIMESTAMP"
+
+echo "=== OpenCode Full Ecosystem Backup ==="
+echo "Timestamp: $TIMESTAMP"
+echo ""
+
+# Create backup directory
+mkdir -p "$BACKUP_PATH"
+
+# Config
+echo "1. Config..."
+if [ -d "$HOME/.config/opencode" ]; then
+  cp -r "$HOME/.config/opencode" "$BACKUP_PATH/config_opencode"
+  # Exclude node_modules
+  rm -rf "$BACKUP_PATH/config_opencode/node_modules" 2>/dev/null
+  echo "   ✅ ~/.config/opencode/"
+fi
+
+# Harnesses
+echo "2. Harness docs..."
+if [ -d "$HARNESSES/opencode" ]; then
+  cp -r "$HARNESSES/opencode" "$BACKUP_PATH/harnesses_opencode"
+  echo "   ✅ opencode/ (docs, memory)"
+fi
+
+# Agents
+echo "3. Agents..."
+if [ -d "$HARNESSES/agents" ] && [ "$(ls -A "$HARNESSES/agents" 2>/dev/null)" ]; then
+  cp -r "$HARNESSES/agents" "$BACKUP_PATH/harnesses_agents"
+  echo "   ✅ agents/"
+else
+  echo "   ℹ️  No agent files to backup"
+fi
+
+# Skills
+echo "4. Skills..."
+if [ -d "$HARNESSES/skills" ] && [ "$(ls -A "$HARNESSES/skills" 2>/dev/null)" ]; then
+  cp -r "$HARNESSES/skills" "$BACKUP_PATH/harnesses_skills"
+  echo "   ✅ skills/"
+else
+  echo "   ℹ️  No skill files to backup"
+fi
+
+# Scripts
+echo "5. Scripts..."
+if [ -d "$HARNESSES/scripts" ] && [ "$(ls -A "$HARNESSES/scripts" 2>/dev/null)" ]; then
+  cp -r "$HARNESSES/scripts" "$BACKUP_PATH/harnesses_scripts"
+  echo "   ✅ scripts/"
+else
+  echo "   ℹ️  No script files to backup"
+fi
+
+# MCP
+echo "6. MCP configs..."
+if [ -d "$HARNESSES/mcp" ] && [ "$(ls -A "$HARNESSES/mcp" 2>/dev/null)" ]; then
+  cp -r "$HARNESSES/mcp" "$BACKUP_PATH/harnesses_mcp"
+  echo "   ✅ mcp/"
+else
+  echo "   ℹ️  No MCP files to backup"
+fi
+
+# Docs
+echo "7. Docs..."
+if [ -d "$HARNESSES/docs" ] && [ "$(ls -A "$HARNESSES/docs" 2>/dev/null)" ]; then
+  cp -r "$HARNESSES/docs" "$BACKUP_PATH/harnesses_docs"
+  echo "   ✅ docs/"
+else
+  echo "   ℹ️  No docs to backup"
+fi
+
+# Summary
+echo ""
+SIZE=$(du -sh "$BACKUP_PATH" 2>/dev/null | cut -f1)
+echo "Backup complete:"
+echo "  Path: $BACKUP_PATH"
+echo "  Size: $SIZE"
+echo ""
+
+# Keep only last 10 backups, remove older ones
+COUNT=$(ls -d "$BACKUP_DIR"/ecosystem-backup-* 2>/dev/null | wc -l)
+if [ "$COUNT" -gt 10 ]; then
+  echo "Cleaning old backups (keeping last 10)..."
+  ls -dt "$BACKUP_DIR"/ecosystem-backup-* | tail -n +11 | xargs rm -rf 2>/dev/null
+  echo "   Done."
+fi
+
+echo ""
+echo "✅ Backup completed successfully."

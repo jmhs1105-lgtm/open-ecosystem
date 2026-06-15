@@ -1,0 +1,74 @@
+#!/usr/bin/env zsh
+# ocmcp — Check MCP (Model Context Protocol) status
+# Lists planned/active MCPs and verifies availability
+
+echo "=== OpenCode MCP Status ==="
+echo ""
+
+# Check MCP documentation
+MCP_DOC="$HOME/harnesses/opencode/MCP.md"
+if [ -f "$MCP_DOC" ]; then
+  echo "MCP documentation: ✅ $MCP_DOC"
+else
+  echo "MCP documentation: ❌ Not found"
+fi
+
+echo ""
+echo "--- MCPs ---"
+
+# Filesystem MCP
+echo ""
+echo "1. Filesystem MCP"
+echo "   Status: 📋 Planned"
+echo "   Config: ~/harnesses/mcp/filesystem/"
+if [ -d "$HOME/harnesses/mcp/filesystem" ]; then
+  echo "   Files: present"
+else
+  echo "   Files: not yet configured"
+fi
+
+# Safe Terminal MCP
+echo ""
+echo "2. Safe-Terminal MCP"
+echo "   Status: 📋 Planned"
+echo "   Config: ~/harnesses/mcp/safe-terminal/"
+if [ -d "$HOME/harnesses/mcp/safe-terminal" ]; then
+  echo "   Files: present"
+else
+  echo "   Files: not yet configured"
+fi
+
+# Fetch/Web MCP
+echo ""
+echo "3. Fetch/Web MCP"
+echo "   Status: 📋 Planned"
+echo "   Config: ~/harnesses/mcp/fetch-web/"
+if [ -d "$HOME/harnesses/mcp/fetch-web" ]; then
+  echo "   Files: present"
+else
+  echo "   Files: not yet configured"
+fi
+
+# Playwright MCP
+echo ""
+echo "4. Playwright MCP"
+echo "   Status: 📋 Planned"
+echo "   Config: ~/harnesses/mcp/playwright/"
+if command -v npx playwright > /dev/null 2>&1; then
+  echo "   Playwright CLI: ✅ available"
+else
+  echo "   Playwright CLI: ❌ not installed (npm install -D @playwright/test)"
+fi
+
+if [ -d "$HOME/harnesses/mcp/playwright" ]; then
+  echo "   MCP config: present"
+else
+  echo "   MCP config: not yet configured"
+fi
+
+echo ""
+echo "--- Summary ---"
+echo "MCPs planned: 4 (filesystem, safe-terminal, fetch/web, playwright)"
+echo "MCPs configured: $(find ~/harnesses/mcp -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
+echo ""
+echo "To configure MCPs, see: ~/harnesses/opencode/MCP.md"

@@ -1,0 +1,17 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "usernamehw.errorlens",
+    "eamodio.gitlens",
+    "formulahendry.auto-rename-tag",
+    "formulahendry.auto-close-tag",
+    "msjsdiag.vscode-react-native",
+    "humao.rest-client",
+    "rangav.vscode-thunder-client",
+    "ms-azuretools.vscode-docker",
+    "alexcvzz.vscode-sqlite",
+    "bradlc.vscode-tailwindcss",
+    "ms-vscode.vscode-typescript-next"
+  ]
+}

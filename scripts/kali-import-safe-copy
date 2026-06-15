@@ -1,0 +1,286 @@
+#!/usr/bin/env zsh
+# kali-import-safe-copy — Copy audited files from staging to production harnesses
+# Usage: kali-import-safe-copy [category]
+#   category: opencode | scripts | skills | docs | android | expo | bots | insforge | railway | mcp | prompts
+#   If no category given, shows available categories
+
+HARNESSES="$HOME/harnesses"
+STAGING="$HARNESSES/kali-import-staging"
+BACKUP_DIR="$HARNESSES/backups"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+show_help() {
+  echo "Usage: kali-import-safe-copy <category>"
+  echo ""
+  echo "Categories:"
+  echo "  opencode   → opencode/ (AGENTS.md, PROJECT_MEMORY.md only — not config)"
+  echo "  scripts    → scripts/"
+  echo "  skills     → skills/"
+  echo "  docs       → docs/"
+  echo "  android    → projects/android/"
+  echo "  expo       → projects/expo-app/"
+  echo "  bots       → projects/bots/"
+  echo "  insforge   → projects/insforge/"
+  echo "  railway    → projects/railway/"
+  echo "  mcp        → mcp/"
+  echo "  prompts    → (no production dir yet, just staging)"
+  echo ""
+  echo "Options:"
+  echo "  --help     Show this help"
+  exit 0
+}
+
+# Mapping: category → staging subpath → dest subpath → file pattern
+category_info() {
+  case "$1" in
+    opencode)
+      SRC="$STAGING/opencode"
+      DST="$HARNESSES/opencode"
+      PATTERN="*.md"
+      DESC="OpenCode memory/agent files"
+      ;;
+    scripts)
+      SRC="$STAGING/scripts"
+      DST="$HARNESSES/scripts"
+      PATTERN="*"
+      DESC="Scripts"
+      ;;
+    skills)
+      SRC="$STAGING/skills"
+      DST="$HARNESSES/skills"
+      PATTERN="*"
+      DESC="Skills"
+      ;;
+    docs)
+      SRC="$STAGING/docs"
+      DST="$HARNESSES/docs"
+      PATTERN="*.md"
+      DESC="Documentation"
+      ;;
+    android)
+      SRC="$STAGING/projects/android"
+      DST="$HARNESSES/projects/android"
+      PATTERN="*"
+      DESC="Android projects"
+      ;;
+    expo)
+      SRC="$STAGING/projects/expo-app"
+      DST="$HARNESSES/projects/expo-app"
+      PATTERN="*"
+      DESC="Expo projects"
+      ;;
+    bots)
+      SRC="$STAGING/projects/bots"
+      DST="$HARNESSES/projects/bots"
+      PATTERN="*"
+      DESC="Bot projects"
+      ;;
+    insforge)
+      SRC="$STAGING/projects/insforge"
+      DST="$HARNESSES/projects/insforge"
+      PATTERN="*"
+      DESC="InsForge schemas"
+      ;;
+    railway)
+      SRC="$STAGING/projects/railway"
+      DST="$HARNESSES/projects/railway"
+      PATTERN="*"
+      DESC="Railway/VPS deploy files"
+      ;;
+    mcp)
+      SRC="$STAGING/mcp"
+      DST="$HARNESSES/mcp"
+      PATTERN="*"
+      DESC="MCP configurations"
+      ;;
+    prompts)
+      SRC="$STAGING/prompts"
+      DST=""
+      PATTERN="*.md"
+      DESC="Prompts (staging only — no production target yet)"
+      ;;
+    *)
+      echo "Unknown category: $1"
+      show_help
+      ;;
+  esac
+}
+
+AUTO_YES=0
+CATEGORY=""
+
+for arg in "$@"; do
+  case "$arg" in
+    -y|--yes) AUTO_YES=1 ;;
+    --help) show_help ;;
+    *)
+      if [ -z "$CATEGORY" ]; then
+        CATEGORY="$arg"
+      fi
+      ;;
+  esac
+done
+
+if [ -z "$CATEGORY" ]; then
+  show_help
+fi
+
+category_info "$CATEGORY"
+
+# Validate source exists
+if [ ! -d "$SRC" ]; then
+  echo "❌ Source not found: $SRC"
+  echo "   Nothing to import for category '$CATEGORY'."
+  exit 1
+fi
+
+# Find files
+if [ -n "$PATTERN" ]; then
+  FILES=($(find "$SRC" -type f -name "$PATTERN" 2>/dev/null))
+else
+  FILES=($(find "$SRC" -type f 2>/dev/null))
+fi
+
+if [ ${#FILES[@]} -eq 0 ]; then
+  echo "ℹ️  No files found in $SRC for category '$CATEGORY'."
+  exit 0
+fi
+
+echo "=== kali-import-safe-copy: $CATEGORY ==="
+echo "Category: $DESC"
+echo "Source:   $SRC"
+echo "Dest:     ${DST:-"(staging only)"}"
+echo "Files:    ${#FILES[@]}"
+echo ""
+
+# Preview
+echo "Files to copy:"
+for f in "${FILES[@]}"; do
+  REL="${f#$SRC/}"
+  echo "  → $REL"
+done
+
+echo ""
+echo "--- WARNING ---"
+echo "This will copy ${#FILES[@]} file(s) to the destination."
+if [ -n "$DST" ]; then
+  echo "Existing files with the same names will be backed up."
+fi
+echo ""
+
+# Confirmation
+if [ "$AUTO_YES" -eq 0 ]; then
+  echo -n "Proceed? (yes/no): "
+  read CONFIRM
+  if [ "$CONFIRM" != "yes" ] && [ "$CONFIRM" != "y" ]; then
+    echo "Cancelled."
+    exit 0
+  fi
+fi
+
+# Backup (only if destination exists)
+BACKUP_PATH=""
+if [ -n "$DST" ] && [ -d "$DST" ]; then
+  BACKUP_PATH="$BACKUP_DIR/pre-import-$CATEGORY-$TIMESTAMP"
+  echo ""
+  echo "Creating backup: $BACKUP_PATH"
+  mkdir -p "$BACKUP_PATH"
+  for f in "${FILES[@]}"; do
+    REL="${f#$SRC/}"
+    SRC_DST_FILE="$DST/$REL"
+    if [ -f "$SRC_DST_FILE" ]; then
+      BACKUP_FILE="$BACKUP_PATH/$REL"
+      mkdir -p "$(dirname "$BACKUP_FILE")"
+      cp "$SRC_DST_FILE" "$BACKUP_FILE"
+    fi
+  done
+  echo "  ✅ Backup created"
+fi
+
+# Copy
+echo ""
+echo "Copying files..."
+COPIED=0
+SKIPPED=0
+for f in "${FILES[@]}"; do
+  REL="${f#$SRC/}"
+  if [ -n "$DST" ]; then
+    DEST_FILE="$DST/$REL"
+    mkdir -p "$(dirname "$DEST_FILE")"
+    cp "$f" "$DEST_FILE"
+    echo "  ✅ $REL"
+    COPIED=$((COPIED+1))
+  else
+    echo "  ℹ️  $REL (staging only — no dest)"
+    SKIPPED=$((SKIPPED+1))
+  fi
+done
+
+echo ""
+echo "--- Copy Summary ---"
+echo "  Copied:   $COPIED"
+echo "  Skipped:  $SKIPPED"
+if [ -n "$BACKUP_PATH" ]; then
+  BK_SIZE=$(du -sh "$BACKUP_PATH" 2>/dev/null | cut -f1)
+  echo "  Backup:   $BACKUP_PATH ($BK_SIZE)"
+fi
+
+# Post-copy validation
+echo ""
+echo "--- Post-Copy Validation ---"
+VALIDATION_FAILED=0
+
+# Run audit on destination
+if [ -n "$DST" ] && [ -d "$DST" ]; then
+  echo "Running audit on destination..."
+  # Check files were copied
+  MISSING=0
+  for f in "${FILES[@]}"; do
+    REL="${f#$SRC/}"
+    if [ ! -f "$DST/$REL" ]; then
+      echo "  ❌ Missing: $DST/$REL"
+      MISSING=$((MISSING+1))
+    fi
+  done
+  if [ "$MISSING" -eq 0 ]; then
+    echo "  ✅ All files present at destination"
+  else
+    echo "  ❌ $MISSING file(s) missing from destination"
+    VALIDATION_FAILED=1
+  fi
+
+  # Run ocdoctor if scripts category
+  if [ "$CATEGORY" = "scripts" ] && [ -f "$HARNESSES/scripts/ocdoctor" ]; then
+    echo ""
+    echo "Running ocdoctor..."
+    if "$HARNESSES/scripts/ocdoctor" > /dev/null 2>&1; then
+      echo "  ✅ ocdoctor passed"
+    else
+      echo "  ⚠️  ocdoctor reported issues (review recommended)"
+      VALIDATION_FAILED=1
+    fi
+  fi
+
+  # Run ocharness-check if opencode category
+  if [ "$CATEGORY" = "opencode" ] && [ -f "$HARNESSES/scripts/ocharness-check" ]; then
+    echo ""
+    echo "Running ocharness-check..."
+    if "$HARNESSES/scripts/ocharness-check" > /dev/null 2>&1; then
+      echo "  ✅ ocharness-check passed"
+    else
+      echo "  ⚠️  ocharness-check reported issues"
+      VALIDATION_FAILED=1
+    fi
+  fi
+fi
+
+echo ""
+if [ "$VALIDATION_FAILED" -eq 0 ]; then
+  echo "✅ Import of '$CATEGORY' completed successfully."
+  exit 0
+else
+  echo "⚠️  Import of '$CATEGORY' completed with validation warnings."
+  echo "   Review issues above. Restore from backup if needed:"
+  echo "   cp -r $BACKUP_PATH/* $DST/"
+  exit 1
+fi

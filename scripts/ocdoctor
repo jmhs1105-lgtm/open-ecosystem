@@ -1,0 +1,133 @@
+#!/usr/bin/env zsh
+# ocdoctor — OpenCode ecosystem diagnosis
+# Checks system health, config validity, and common issues
+
+PASS=0
+FAIL=0
+WARN=0
+
+ok()   { PASS=$((PASS+1)); echo "  ✅ $1"; }
+fail() { FAIL=$((FAIL+1)); echo "  ❌ $1"; }
+warn() { WARN=$((WARN+1)); echo "  ⚠️  $1"; }
+
+echo "=== OpenCode Ecosystem Doctor ==="
+echo ""
+
+echo "--- System ---"
+if command -v opencode > /dev/null 2>&1; then
+  ok "OpenCode $(opencode --version 2>/dev/null) at $(which opencode)"
+else
+  fail "OpenCode not found in PATH"
+fi
+
+if command -v node > /dev/null 2>&1; then
+  ok "Node.js $(node --version 2>/dev/null)"
+else
+  fail "Node.js not found"
+fi
+
+if command -v npm > /dev/null 2>&1; then
+  ok "npm $(npm --version 2>/dev/null)"
+else
+  fail "npm not found"
+fi
+
+if command -v git > /dev/null 2>&1; then
+  ok "Git $(git --version 2>/dev/null | awk '{print $3}')"
+else
+  fail "Git not found"
+fi
+
+echo ""
+echo "--- Config ---"
+if [ -f "$HOME/.config/opencode/opencode.json" ]; then
+  if python3 -m json.tool "$HOME/.config/opencode/opencode.json" > /dev/null 2>&1; then
+    ok "opencode.json is valid JSON"
+    # Check for incompatible keys
+    if grep -q '"providers"' "$HOME/.config/opencode/opencode.json" 2>/dev/null; then
+      fail "opencode.json contains incompatible 'providers' key"
+    fi
+  else
+    fail "opencode.json is NOT valid JSON"
+  fi
+else
+  fail "opencode.json not found"
+fi
+
+echo ""
+echo "--- Harnesses ---"
+HARNESSES="$HOME/harnesses"
+for dir in opencode projects backups skills logs memory agents scripts mcp docs; do
+  if [ -d "$HARNESSES/$dir" ]; then
+    ok "harnesses/$dir exists"
+  else
+    warn "harnesses/$dir missing"
+  fi
+done
+
+echo ""
+echo "--- Key Files ---"
+for f in PROJECT_MEMORY.md AGENTS.md HARNESS.md MCP.md SKILLS.md ROADMAP.md RECOVERY.md SECURITY_RULES.md; do
+  if [ -f "$HARNESSES/opencode/$f" ]; then
+    ok "$f present ($(wc -l < "$HARNESSES/opencode/$f") lines)"
+  else
+    warn "$f missing"
+  fi
+done
+
+echo ""
+echo "--- Scripts ---"
+for s in ocstart ocsave ocdoctor ocbackup ocrestore ocmodels ocmcp ocharness-check; do
+  if [ -x "$HARNESSES/scripts/$s" ]; then
+    ok "scripts/$s executable"
+  elif [ -f "$HARNESSES/scripts/$s" ]; then
+    warn "scripts/$s not executable (chmod +x)"
+  else
+    warn "scripts/$s missing"
+  fi
+done
+
+echo ""
+echo "--- Android SDK ---"
+if [ -d "$HOME/Library/Android/sdk" ]; then
+  ok "Android SDK found"
+  if [ -f "$HOME/Library/Android/sdk/platform-tools/adb" ]; then
+    ok "ADB present"
+  else
+    warn "ADB not found in SDK"
+  fi
+else
+  warn "Android SDK not found"
+fi
+
+echo ""
+echo "--- Java ---"
+if command -v java > /dev/null 2>&1; then
+  ok "Java $(java -version 2>&1 | head -1 | awk '{print $3}')"
+else
+  warn "Java not found"
+fi
+
+if command -v gradle > /dev/null 2>&1; then
+  ok "Gradle $(gradle --version 2>/dev/null | grep 'Gradle ' | awk '{print $2}')"
+else
+  warn "Gradle not found"
+fi
+
+echo ""
+echo "--- Summary ---"
+TOTAL=$((PASS+FAIL+WARN))
+echo "  ✅ Pass: $PASS"
+echo "  ❌ Fail: $FAIL"
+echo "  ⚠️  Warn: $WARN"
+echo "  Total:  $TOTAL"
+
+if [ "$FAIL" -gt 0 ]; then
+  echo ""
+  echo "⚠️  $FAIL issue(s) need attention."
+  exit 1
+else
+  echo ""
+  echo "✅ System looks healthy."
+  exit 0
+fi

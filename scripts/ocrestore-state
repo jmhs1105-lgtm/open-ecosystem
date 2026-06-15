@@ -1,0 +1,45 @@
+#!/bin/bash
+# ocrestore-state — Restaura estado de la última sesión
+# Uso: ~/harnesses/scripts/ocrestore-state
+
+echo "=== Restaurando estado de sesión ==="
+
+SESSION_FILE="$HOME/harnesses/opencode/SESSION_MEMORY.md"
+SNAPSHOTS_DIR="$HOME/harnesses/backups"
+LAST_SNAPSHOT=$(ls -dt "$SNAPSHOTS_DIR"/snapshot-* 2>/dev/null | head -1)
+
+echo ""
+echo "1. Memoria de sesión"
+if [ -f "$SESSION_FILE" ]; then
+  echo "   ✅ SESSION_MEMORY.md cargada"
+  wc -l < "$SESSION_FILE" | xargs -I{} echo "   📄 {} líneas"
+else
+  echo "   ⚠️  No encontrada"
+fi
+
+echo ""
+echo "2. Último snapshot local"
+if [ -n "$LAST_SNAPSHOT" ]; then
+  echo "   ✅ $(basename $LAST_SNAPSHOT)"
+else
+  echo "   ⚠️  No hay snapshots"
+fi
+
+echo ""
+echo "3. Conexión InsForge"
+if which insforge &>/dev/null && [ -f "$HOME/harnesses/projects/js-agents/insforge/.insforge/project.json" ]; then
+  echo "   ✅ InsForge CLI conectado"
+  insforge whoami 2>/dev/null | head -1 | xargs -I{} echo "   👤 {}"
+
+  echo ""
+  echo "4. Cargando sesión desde la nube..."
+  bash "$HOME/harnesses/scripts/ocload-session" 2>/dev/null
+else
+  echo ""
+  echo "4. Último progreso conocido (local)"
+  echo "   Proyecto: js-agents (backend-api + insforge)"
+  echo "   Última acción: $(grep -A1 'Última acción' "$SESSION_FILE" 2>/dev/null | tail -1 | sed 's/^[*]* //')"
+fi
+
+echo ""
+echo "=== Restauración completada ==="

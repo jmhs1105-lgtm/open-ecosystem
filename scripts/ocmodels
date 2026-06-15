@@ -1,0 +1,48 @@
+#!/usr/bin/env zsh
+# ocmodels — Check configured AI providers and models
+# Lists providers without exposing secrets. Validates env vars.
+
+echo "=== OpenCode Models & Providers ==="
+echo ""
+
+# Check current model from OpenCode state
+MODEL_FILE="$HOME/.local/state/opencode/model.json"
+if [ -f "$MODEL_FILE" ]; then
+  echo "Active model (from state):"
+  CURRENT=$(python3 -c "
+import json
+with open('$MODEL_FILE') as f:
+    d = json.load(f)
+    recent = d.get('recent', [{}])
+    if recent:
+        print(f\"  Provider: {recent[0].get('providerID', 'unknown')}\")
+        print(f\"  Model:    {recent[0].get('modelID', 'unknown')}\")
+    favorites = d.get('favorite', [])
+    if favorites:
+        print(f\"  Favorites: {len(favorites)}\")
+  " 2>/dev/null)
+  if [ -n "$CURRENT" ]; then
+    echo "$CURRENT"
+  else
+    echo "  (unable to read model state)"
+  fi
+else
+  echo "ℹ️  No model state file found"
+fi
+
+echo ""
+
+# Check env vars for providers (show only if defined, without values)
+echo "Environment check:"
+for var in OPENROUTER_API_KEY GEMINI_API_KEY GROQ_API_KEY CEREBRAS_API_KEY OLLAMA_API_KEY INSFORGE_API_KEY TELEGRAM_BOT_TOKEN; do
+  if [ -n "${(P)var}" ]; then
+    echo "  ✅ $var configured"
+  else
+    echo "  ⚠️  $var not set"
+  fi
+done
+
+echo ""
+echo "ℹ️  No API keys or secrets are displayed."
+echo "ℹ️  To configure providers, edit ~/.config/opencode/opencode.json"
+echo "    or use a .env file (for local-only use)."

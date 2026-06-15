@@ -1,0 +1,112 @@
+#!/usr/bin/env zsh
+# ocharness-check — Validate harness ecosystem structure
+# Checks minimum structure, key files, and security rules
+
+HARNESSES="$HOME/harnesses"
+PASS=0
+FAIL=0
+WARN=0
+
+ok()   { PASS=$((PASS+1)); echo "  ✅ $1"; }
+fail() { FAIL=$((FAIL+1)); echo "  ❌ $1"; }
+warn() { WARN=$((WARN+1)); echo "  ⚠️  $1"; }
+
+echo "=== Harness Ecosystem Check ==="
+echo ""
+
+echo "--- Directory Structure ---"
+for dir in opencode projects backups skills logs memory agents scripts mcp docs; do
+  if [ -d "$HARNESSES/$dir" ]; then
+    ok "harnesses/$dir/"
+  else
+    fail "harnesses/$dir/ missing"
+  fi
+done
+
+echo ""
+echo "--- Core Files ---"
+for f in PROJECT_MEMORY.md AGENTS.md HARNESS.md MCP.md SKILLS.md ROADMAP.md RECOVERY.md SECURITY_RULES.md KALI_SYNC_PLAN.md KALI_IMPORT_CHECKLIST.md STATUS.md; do
+  if [ -f "$HARNESSES/opencode/$f" ]; then
+    ok "$f"
+    # Check file is not empty
+    if [ ! -s "$HARNESSES/opencode/$f" ]; then
+      fail "$f is empty"
+    fi
+  else
+    fail "$f missing"
+  fi
+done
+
+echo ""
+echo "--- Scripts ---"
+for s in ocstart ocsave ocdoctor ocbackup ocrestore ocmodels ocmcp ocharness-check kali-import-audit kali-import-safe-copy ocagents-check; do
+  if [ -f "$HARNESSES/scripts/$s" ]; then
+    if [ -x "$HARNESSES/scripts/$s" ]; then
+      ok "$s (executable)"
+    else
+      warn "$s (not executable — run chmod +x)"
+    fi
+  else
+    fail "$s missing"
+  fi
+done
+
+echo ""
+echo "--- Security Rules Check ---"
+if [ -f "$HARNESSES/opencode/SECURITY_RULES.md" ]; then
+  # Check for key security rules in the file
+  if grep -q "Never print" "$HARNESSES/opencode/SECURITY_RULES.md" 2>/dev/null; then
+    ok "Never print secrets rule present"
+  else
+    fail "Missing 'Never print' security rule"
+  fi
+  if grep -q "Rollback" "$HARNESSES/opencode/SECURITY_RULES.md" 2>/dev/null; then
+    ok "Rollback protocol present"
+  else
+    warn "Rollback protocol not found"
+  fi
+fi
+
+echo ""
+echo "--- Kali Sync ---"
+if [ -d "$HARNESSES/kali-import-staging" ]; then
+  ok "kali-import-staging/ directory present"
+else
+  warn "kali-import-staging/ directory missing"
+fi
+
+echo ""
+echo "--- Agents ---"
+if [ -f "$HARNESSES/agents/README.md" ]; then
+  ok "agents/README.md present"
+else
+  warn "agents/README.md missing"
+fi
+AGENT_COUNT=$(find "$HARNESSES/agents" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+if [ "$AGENT_COUNT" -eq 14 ]; then
+  ok "14 agent directories present"
+elif [ "$AGENT_COUNT" -gt 0 ]; then
+  warn "$AGENT_COUNT agent directories found (expected 13)"
+else
+  fail "No agent directories found"
+fi
+
+echo ""
+echo "--- Summary ---"
+echo "  ✅ Pass: $PASS"
+echo "  ❌ Fail: $FAIL"
+echo "  ⚠️  Warn: $WARN"
+
+if [ "$FAIL" -gt 0 ]; then
+  echo ""
+  echo "⚠️  $FAIL critical issue(s) found."
+  exit 1
+elif [ "$WARN" -gt 0 ]; then
+  echo ""
+  echo "⚠️  $WARN warning(s) — review recommended."
+  exit 0
+else
+  echo ""
+  echo "✅ Harness ecosystem is complete."
+  exit 0
+fi

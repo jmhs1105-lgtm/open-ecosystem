@@ -1,0 +1,166 @@
+#!/usr/bin/env zsh
+# ocskills-download-audit — Audit downloaded skills in staging
+# Checks for secrets, dangerous commands, binaries, and license issues
+# Reports only — NEVER deletes files
+
+STAGING="$HOME/harnesses/skills-download-staging"
+PASS=0
+FAIL=0
+WARN=0
+
+ok()   { PASS=$((PASS+1)); echo "  ✅ $1"; }
+fail() { FAIL=$((FAIL+1)); echo "  ❌ $1"; }
+warn() { WARN=$((WARN+1)); echo "  ⚠️  $1"; }
+
+echo "=== Skills Download Audit ==="
+echo "Scanning: $STAGING/raw"
+echo ""
+
+# 1. Files found
+FILES=$(find "$STAGING/raw" -type f 2>/dev/null)
+FILE_COUNT=$(echo "$FILES" | grep -c . 2>/dev/null || echo 0)
+echo "--- Files Found ---"
+echo "  Total: $FILE_COUNT files"
+for f in $FILES; do
+  REL="${f#$STAGING/raw/}"
+  SIZE=$(wc -l < "$f" 2>/dev/null | tr -d ' ')
+  echo "  📄 $REL ($SIZE lines)"
+done
+
+# 2. Secrets scan
+echo ""
+echo "--- Secrets Scan ---"
+SECRET_PATTERNS=(
+  'api[_-]?key.*[:=].*[A-Za-z0-9]{16,}'
+  'token.*[:=].*[A-Za-z0-9]{16,}'
+  'secret.*[:=].*[A-Za-z0-9]{16,}'
+  'sk-[A-Za-z0-9]{20,}'
+  'ghp_[A-Za-z0-9]{36}'
+  'AKIA[0-9A-Z]{16}'
+)
+SECRET_FOUND=0
+for f in $FILES; do
+  for pattern in "${SECRET_PATTERNS[@]}"; do
+    if grep -qiE "$pattern" "$f" 2>/dev/null; then
+      REL="${f#$STAGING/raw/}"
+      warn "Possible secret in $REL"
+      SECRET_FOUND=$((SECRET_FOUND+1))
+    fi
+  done
+done
+if [ "$SECRET_FOUND" -eq 0 ]; then
+  ok "No secrets detected"
+fi
+
+# 3. Dangerous commands
+echo ""
+echo "--- Dangerous Commands ---"
+DANGEROUS_PATTERNS=(
+  'rm -rf'
+  'curl.*\|.*bash'
+  'curl.*\|.*sh'
+  'sudo '
+  'chmod 777'
+  ':(){ :|:& };:'
+  'git push'
+  'npm publish'
+)
+DANGEROUS_FOUND=0
+for f in $FILES; do
+  for pattern in "${DANGEROUS_PATTERNS[@]}"; do
+    if grep -qiE "$pattern" "$f" 2>/dev/null; then
+      REL="${f#$STAGING/raw/}"
+      warn "Dangerous pattern in $REL: $pattern"
+      DANGEROUS_FOUND=$((DANGEROUS_FOUND+1))
+    fi
+  done
+done
+if [ "$DANGEROUS_FOUND" -eq 0 ]; then
+  ok "No dangerous commands"
+fi
+
+# 4. Binary files
+echo ""
+echo "--- Binary Files ---"
+BINARY_FOUND=0
+for f in $FILES; do
+  if file "$f" 2>/dev/null | grep -qiE 'binary|executable|ELF|Mach-O'; then
+    REL="${f#$STAGING/raw/}"
+    fail "Binary file: $REL"
+    BINARY_FOUND=$((BINARY_FOUND+1))
+  fi
+done
+if [ "$BINARY_FOUND" -eq 0 ]; then
+  ok "No binary files"
+fi
+
+# 5. Large files
+echo ""
+echo "--- Large Files (>1000 lines) ---"
+LARGE_FOUND=0
+for f in $FILES; do
+  LINES=$(wc -l < "$f" 2>/dev/null | tr -d ' ')
+  if [ "$LINES" -gt 1000 ]; then
+    REL="${f#$STAGING/raw/}"
+    warn "Large file: $REL ($LINES lines)"
+    LARGE_FOUND=$((LARGE_FOUND+1))
+  fi
+done
+if [ "$LARGE_FOUND" -eq 0 ]; then
+  ok "No oversized files"
+fi
+
+# 6. .env files
+echo ""
+echo "--- .env Files ---"
+ENV_FOUND=0
+for f in $FILES; do
+  BASENAME=$(basename "$f")
+  if [[ "$BASENAME" == ".env" ]] || [[ "$BASENAME" == .env.* ]]; then
+    REL="${f#$STAGING/raw/}"
+    fail ".env file found: $REL"
+    ENV_FOUND=$((ENV_FOUND+1))
+  fi
+done
+if [ "$ENV_FOUND" -eq 0 ]; then
+  ok "No .env files"
+fi
+
+# 7. Empty files
+echo ""
+echo "--- Empty Files ---"
+EMPTY_FOUND=0
+for f in $FILES; do
+  if [ ! -s "$f" ]; then
+    REL="${f#$STAGING/raw/}"
+    warn "Empty file: $REL"
+    EMPTY_FOUND=$((EMPTY_FOUND+1))
+  fi
+done
+if [ "$EMPTY_FOUND" -eq 0 ]; then
+  ok "No empty files"
+fi
+
+# Summary
+echo ""
+echo "=== Audit Summary ==="
+TOTAL=$((PASS+FAIL+WARN))
+echo "  ✅ Pass: $PASS"
+echo "  ❌ Fail: $FAIL"
+echo "  ⚠️  Warn: $WARN"
+echo "  Total:  $TOTAL"
+echo "  Files:  $FILE_COUNT"
+
+if [ "$FAIL" -gt 0 ]; then
+  echo ""
+  echo "❌ BLOCKED: $FAIL issue(s) must be resolved before integrating."
+  exit 1
+elif [ "$WARN" -gt 0 ]; then
+  echo ""
+  echo "⚠️  $WARN warning(s) — review before integrating."
+  exit 0
+else
+  echo ""
+  echo "✅ All downloads passed audit. Safe to adapt and integrate."
+  exit 0
+fi

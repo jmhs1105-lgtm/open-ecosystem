@@ -1,0 +1,67 @@
+#!/usr/bin/env zsh
+# ocstart — OpenCode ecosystem starter
+# Opens OpenCode from the harnesses directory with validation
+
+HARNESSES="$HOME/harnesses"
+CONFIG_DIR="$HOME/.config/opencode"
+OPENCODE_BIN="/usr/local/bin/opencode"
+
+echo "=== OpenCode Ecosystem Starter ==="
+echo ""
+
+# Verify config exists
+if [ ! -f "$CONFIG_DIR/opencode.json" ]; then
+  echo "❌ ERROR: No opencode.json found at $CONFIG_DIR"
+  echo "   Run: ocdoctor for diagnosis"
+  exit 1
+fi
+
+# Validate JSON
+if ! python3 -m json.tool "$CONFIG_DIR/opencode.json" > /dev/null 2>&1; then
+  echo "❌ ERROR: opencode.json is not valid JSON"
+  exit 1
+fi
+
+# Verify memory
+if [ ! -f "$HARNESSES/opencode/PROJECT_MEMORY.md" ]; then
+  echo "⚠️  WARNING: PROJECT_MEMORY.md not found"
+else
+  echo "✅ PROJECT_MEMORY.md present"
+fi
+
+if [ ! -f "$HARNESSES/opencode/AGENTS.md" ]; then
+  echo "⚠️  WARNING: AGENTS.md not found"
+else
+  echo "✅ AGENTS.md present"
+fi
+
+if [ ! -f "$HARNESSES/opencode/SECURITY_RULES.md" ]; then
+  echo "⚠️  WARNING: SECURITY_RULES.md not found"
+else
+  echo "✅ SECURITY_RULES.md present"
+fi
+
+# Check OpenCode binary
+if [ ! -x "$OPENCODE_BIN" ]; then
+  echo "❌ ERROR: OpenCode binary not found at $OPENCODE_BIN"
+  exit 1
+fi
+
+echo ""
+echo "=== Status ==="
+echo "OpenCode: $(opencode --version 2>/dev/null || echo 'unknown')"
+echo "Node:     $(node --version 2>/dev/null || echo 'not found')"
+echo "Config:   $CONFIG_DIR/opencode.json"
+echo "Harness:  $HARNESSES"
+echo ""
+
+# Check if already running
+if [ -n "$OPENCODE_RUN_ID" ]; then
+  echo "⚠️  OpenCode is already running in this session (RUN_ID: $OPENCODE_RUN_ID)"
+  echo "   Starting a new instance may conflict."
+  echo ""
+fi
+
+# Launch
+echo "Launching OpenCode from $HARNESSES ..."
+cd "$HARNESSES" && exec "$OPENCODE_BIN"

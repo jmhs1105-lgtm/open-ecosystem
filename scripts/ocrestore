@@ -1,0 +1,53 @@
+#!/usr/bin/env zsh
+# ocrestore — List and restore ecosystem backups
+# NEVER restores automatically without confirmation
+
+BACKUP_DIR="$HOME/harnesses/backups"
+
+echo "=== OpenCode Backup Restore ==="
+echo ""
+
+# Collect backups safely
+typeset -a BACKUPS
+while IFS= read -r p; do
+  [ -n "$p" ] && BACKUPS+=("$p")
+done < <(find "$BACKUP_DIR" -maxdepth 1 -type d \( -name 'ecosystem-backup-*' -o -name 'snapshot-*' \) 2>/dev/null | sort -r)
+
+# Sort reverse by name (which includes timestamp)
+BACKUPS=(${(On)BACKUPS})
+
+if [ ${#BACKUPS[@]} -eq 0 ]; then
+  echo "No backups found in $BACKUP_DIR"
+  echo ""
+  echo "Other backups available:"
+  if [ -d "$HOME/opencode_FULL_BACKUP_20260614-200622" ]; then
+    echo "  - $HOME/opencode_FULL_BACKUP_20260614-200622 (initial system backup)"
+  fi
+  if [ -d "$HOME/opencode_desktop_backups" ]; then
+    echo "  - $HOME/opencode_desktop_backups/ (desktop state backups)"
+  fi
+  exit 0
+fi
+
+echo "Available backups:"
+echo ""
+for i in {1..${#BACKUPS[@]}}; do
+  NAME=$(basename "${BACKUPS[$i]}")
+  DATE=$(echo "$NAME" | grep -oE '[0-9]{8}-[0-9]{6}')
+  SIZE=$(du -sh "${BACKUPS[$i]}" 2>/dev/null | cut -f1)
+  echo "  [$i] $NAME  ($SIZE)"
+done
+
+echo ""
+echo "To restore:"
+echo "  1. Note the backup number"
+echo "  2. Restore manually:"
+echo ""
+echo "  # Example restore config:"
+echo "  cp -r $BACKUP_DIR/<backup-name>/config_opencode/opencode.json ~/.config/opencode/opencode.json"
+echo ""
+echo "  # Example restore harness docs:"
+echo "  cp -r $BACKUP_DIR/<backup-name>/harnesses_opencode/* ~/harnesses/opencode/"
+echo ""
+echo "⚠️  NEVER restore automatically without reviewing contents first."
+echo "⚠️  Always backup current state before restoring anything."

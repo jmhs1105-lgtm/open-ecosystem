@@ -1,0 +1,146 @@
+#!/usr/bin/env zsh
+# ocagents-check — Validate OpenCode agents structure
+# Checks that all 13 agent directories exist with required files
+
+HARNESSES="$HOME/harnesses"
+AGENTS_DIR="$HARNESSES/agents"
+PASS=0
+FAIL=0
+WARN=0
+
+ok()   { PASS=$((PASS+1)); echo "  ✅ $1"; }
+fail() { FAIL=$((FAIL+1)); echo "  ❌ $1"; }
+warn() { WARN=$((WARN+1)); echo "  ⚠️  $1"; }
+
+echo "=== OpenCode Agents Validation ==="
+echo ""
+
+# 13 agents total
+AGENTS=(
+  orchestrator-ai-master
+  android-architect
+  react-native-expo
+  backend-api
+  insforge
+  telegram-bot
+  whatsapp-bot
+  mcp-operations
+  cloud-runtime
+  ai-provider
+  security-recovery
+  software-architect
+  research-agent
+  team-skills-architect
+)
+
+REQUIRED_FILES=(agent.md skills.md checklist.md tools.md memory.md)
+
+echo "--- Agent Directories ---"
+for agent in "${AGENTS[@]}"; do
+  if [ -d "$AGENTS_DIR/$agent" ]; then
+    ok "$agent/ exists"
+  else
+    fail "$agent/ missing"
+  fi
+done
+
+echo ""
+echo "--- Agent Required Files ---"
+for agent in "${AGENTS[@]}"; do
+  for f in "${REQUIRED_FILES[@]}"; do
+    FILE="$AGENTS_DIR/$agent/$f"
+    if [ -f "$FILE" ]; then
+      if [ -s "$FILE" ]; then
+        ok "$agent/$f ($(wc -l < "$FILE" | tr -d ' ') lines)"
+      else
+        warn "$agent/$f is empty"
+      fi
+    else
+      fail "$agent/$f missing"
+    fi
+  done
+done
+
+echo ""
+echo "--- Orchestrator Routing ---"
+if [ -f "$AGENTS_DIR/orchestrator-ai-master/routing.md" ]; then
+  ok "orchestrator-ai-master/routing.md present"
+else
+  fail "orchestrator-ai-master/routing.md missing"
+fi
+
+echo ""
+echo "--- Central Index ---"
+if [ -f "$HARNESSES/opencode/AGENTS.md" ]; then
+  ok "AGENTS.md present ($(wc -l < "$HARNESSES/opencode/AGENTS.md" | tr -d ' ') lines)"
+else
+  fail "AGENTS.md missing"
+fi
+
+if [ -f "$AGENTS_DIR/README.md" ]; then
+  ok "agents/README.md present"
+else
+  warn "agents/README.md missing"
+fi
+
+echo ""
+echo "--- Security Check ---"
+# Check for secrets in agent files
+SECRET_PATTERNS=(
+  'api[_-]?key.*=.*[A-Za-z0-9]{16,}'
+  'token.*=.*[A-Za-z0-9]{16,}'
+  'secret.*=.*[A-Za-z0-9]{16,}'
+  'password.*=.*[A-Za-z0-9]{8,}'
+)
+SECRET_FOUND=0
+for agent in "${AGENTS[@]}"; do
+  for f in "${REQUIRED_FILES[@]}"; do
+    FILE="$AGENTS_DIR/$agent/$f"
+    if [ -f "$FILE" ]; then
+      for pattern in "${SECRET_PATTERNS[@]}"; do
+        if grep -riE "$pattern" "$FILE" > /dev/null 2>&1; then
+          warn "$agent/$f may contain secret-like pattern"
+          SECRET_FOUND=$((SECRET_FOUND+1))
+        fi
+      done
+    fi
+  done
+done
+if [ "$SECRET_FOUND" -eq 0 ]; then
+  ok "No obvious secrets in agent files"
+fi
+
+echo ""
+echo "--- opencode.json Status ---"
+if [ -f "$HOME/.config/opencode/opencode.json" ]; then
+  if python3 -m json.tool "$HOME/.config/opencode/opencode.json" > /dev/null 2>&1; then
+    ok "opencode.json is valid JSON"
+  else
+    fail "opencode.json is invalid JSON"
+  fi
+  if grep -q '"providers"' "$HOME/.config/opencode/opencode.json" 2>/dev/null; then
+    fail "opencode.json contains incompatible 'providers' key"
+  else
+    ok "opencode.json has no incompatible 'providers' key"
+  fi
+else
+  warn "opencode.json not found"
+fi
+
+echo ""
+echo "--- Summary ---"
+TOTAL=$((PASS+FAIL+WARN))
+echo "  ✅ Pass: $PASS"
+echo "  ❌ Fail: $FAIL"
+echo "  ⚠️  Warn: $WARN"
+echo "  Total:  $TOTAL"
+
+if [ "$FAIL" -gt 0 ]; then
+  echo ""
+  echo "⚠️  $FAIL issue(s) must be resolved."
+  exit 1
+else
+  echo ""
+  echo "✅ All agents validated successfully."
+  exit 0
+fi

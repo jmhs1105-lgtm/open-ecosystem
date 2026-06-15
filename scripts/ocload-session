@@ -1,0 +1,41 @@
+#!/bin/bash
+# ocload-session — Restaura última sesión desde InsForge cloud
+# Uso: ocload-session
+
+INFORGE_DIR="$HOME/harnesses/projects/js-agents/insforge"
+
+echo "=== Cargando última sesión desde InsForge ==="
+echo ""
+
+# 1. Obtener último estado del agente
+SQL_GET_STATE="SELECT session_id, current_task, context, last_action, started_at FROM agent_state WHERE agent_name='orchestrator' ORDER BY started_at DESC LIMIT 1;"
+
+RESULT=$(cd "$INFORGE_DIR" && insforge db query "$SQL_GET_STATE" 2>&1)
+if [ $? -eq 0 ] && [ -n "$RESULT" ] && [ "$RESULT" != "Query executed successfully." ]; then
+  echo "  ✅ Estado de sesión encontrado"
+  echo ""
+  echo "  Última sesión:"
+  echo "$RESULT" | while IFS= read -r line; do
+    echo "    $line"
+  done
+else
+  echo "  ⚠️  No hay sesiones previas en InsForge"
+fi
+
+echo ""
+
+# 2. Obtener última memoria guardada
+SQL_GET_MEM="SELECT key, value, created_at FROM memory_entries WHERE agent_id='orchestrator' ORDER BY created_at DESC LIMIT 3;"
+
+RESULT2=$(cd "$INFORGE_DIR" && insforge db query "$SQL_GET_MEM" 2>&1)
+if [ $? -eq 0 ] && [ -n "$RESULT2" ] && [ "$RESULT2" != "Query executed successfully." ]; then
+  echo "  Últimas memorias:"
+  echo "$RESULT2" | while IFS= read -r line; do
+    echo "    $line"
+  done
+else
+  echo "  ⚠️  No hay memorias guardadas"
+fi
+
+echo ""
+echo "=== Carga completada ==="
